@@ -6,21 +6,23 @@
 import os
 import sys
 import argparse
-import logging
 
-# "Computer vison" libraries 
+# "Computer Vision" libraries
 import numpy as np
 import cv2
 
 def create_voronoi_diagram(image, subdiv_2D, voronoi_color) :
-    """Create and print a voronoi diagram on
+    """Create and print a Voronoi diagram on
     the image to process.
 
     :param image: The image to print the Voronoi diagram
     :type image: cv2.imread()
 
-    :param subdiv_2D: The object containing centers for creating Voronoi diagram
+    :param subdiv_2D: The object containing centers for creating the Voronoi diagram
     :type subdiv_2D: cv2.subdiv2D
+
+    :param voronoi_color: Color of the Voronoi diagram
+    :type voronoi_color: tuple (RGB value)
 
     :return: The polygones's coordinates
     :rtype: np.Array
@@ -41,15 +43,20 @@ def detect_blue_blobs(image, connectivity, detected_blob_color):
     :param image: The image to detect the blue blobs
     :type image: cv2.imread()
 
+    :param detected_blob_color: Color of the detected blobs
+    :type detected_blob_color: tuple (RGB value)
+
     :return: Centers and Container of centers
     :rtype: np.Array, cv2.Subdiv2D 
 
     """
 
+    # Keep only blue channel
     blue_channel = image.copy()
     blue_channel[:,:,1] = 0
     blue_channel[:,:,2] = 0
 
+    # Create gray image for the thresholding
     gray_image = cv2.cvtColor(blue_channel, cv2.COLOR_BGR2GRAY)
 
     (thresh, bw_image) = cv2.threshold(gray_image, 128, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
@@ -62,6 +69,7 @@ def detect_blue_blobs(image, connectivity, detected_blob_color):
     # Create a rectangle of type Subdiv2D for Voronoi
     subdiv_2D = cv2.Subdiv2D(rect)
 
+    # Detection
     output = cv2.connectedComponentsWithStats(bw_image, connectivity, cv2.CV_32S)
 
     # The fourth cell is the centroid matrix
@@ -81,10 +89,25 @@ def detect_blue_blobs(image, connectivity, detected_blob_color):
 def process(images,  output_folder_temp, output_folder, connectivity, detected_blob_color, voronoi_color):
     """The process of the image consists on :
     1) Blue Blob detection
-    2) Voronoi Diagram creation over these detected blobs
+    2) Voronoi Diagram creation over these detected blue blobs
 
     :param images: The images to process
-    :type image: cv2.imread()
+    :type images: cv2.imread()
+
+    :param output_folder_temp: The User output folder of the processed images
+    :type output_folder_temp: str
+
+    :param output_folder: The Default output folder of the processed images
+    :type output_folder: str
+
+    :param connectivity: Neighborhood value for the detection
+    :type connectivity: int
+
+    :param detected_blob_color: Color of the detected blobs
+    :type detected_blob_color: tuple (RGB value)
+
+    :param voronoi_color: Color of the Voronoi diagram
+    :type voronoi_color: tuple (RGB value)
 
     :return: Centers and polygones's coordinates of all images
     :rtype: list of np.Array
@@ -129,7 +152,13 @@ def process(images,  output_folder_temp, output_folder, connectivity, detected_b
     return total_facets
 
 def main(images=[], output_folder="", connectivity=0, detected_blob_color=None, voronoi_color=None):
-    
+    """Main function defined for the Matlab call of python script
+    It checks arguments and run process() method.
+
+    cf process.__doc__
+
+    """
+
     parser = argparse.ArgumentParser()
 
     parser.add_argument("-i", action="store",dest="images",nargs='*',type=str,default=[],help="The images to process ie. -i image_1 image_2 ...")

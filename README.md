@@ -9,16 +9,16 @@ Contents:
 	* [Run it](#run-it)
     * [Matlab and Python integration](#matlab-and-python-integration)
       * [Prerequisites](#prerequisites)
-      * [Code](#code)
+      * [Matlab Code](#matlab-code)
 
 
 
 ## Introduction
 
 
-This script aims to detect blue blobs which represent center of cells of an organic tissue.
+This script aims to detect blue blobs that represent center of cells of an organic tissue.
 
-Then a Voroinoi diagram is drawn over these detected blue blobs in order to represent the cells themselves.
+A Voroinoi diagram is drawn over these detected blue blobs in order to represent the cells themselves.
 
 Finally, we would like to simulate a blood flow in animating this diagram by giving a speed to the cells coming from a speed field.
 
@@ -27,9 +27,9 @@ Finally, we would like to simulate a blood flow in animating this diagram by giv
 The detection is working only if the blobs are blue and nothing else. It cannot be use for a **General Blob Detection** !
 
 
-## Prerequistes
+## Prerequisites
 
-For doing "Computer Vision", the script uses **OpenCV** library we choose to use for its efficiency:
+For doing the "Computer Vision", the script uses **OpenCV** library we choose to use for its efficiency:
 
 [OpenCV For Linux](https://docs.opencv.org/trunk/d7/d9f/tutorial_linux_install.html)
 
@@ -38,7 +38,7 @@ For doing "Computer Vision", the script uses **OpenCV** library we choose to use
 
 ## Run it
 
-Please, check the script's options if you are interrested in specifying the parameters of the detection :
+Please, check the script's options if you are interested in specifying the parameters of the detection :
 
 	python bbd.py -h
 
@@ -50,27 +50,27 @@ You can try a first detection by using the image [organic.tif](images/organic.ti
 
 	python bbd.py -i images/organic.tif
 	
-The processed image [images/organic_processed.tif]() should be generated and you should see the following stdout :
+The processed image [organic_processed](images/organic_processed.tif) should be generated and you should see the following stdout :
 
 ![IMAGE NOT AVAILABLE](images/proc.png "processing")
 
-You can modify many parameters like the connectivity of the detection, the color of the voronoi diagram ...
+You can modify some parameters like the connectivity of the detection, the color of the voronoi diagram etc...
 
 ## Matlab and Python integration
 
-### Prerequistes
+### Prerequisites
 
-In order to be able to execute python script from matlab you have to :
+In order to be able to execute python script from Matlab, you have to :
 
 [Install Matlab API for python](https://ch.mathworks.com/help/matlab/matlab_external/install-the-matlab-engine-for-python.html)
 
-Add the git folder **Blue-Blob-Detection** containing bbd.py script to the PythonPath :
+Add the git folder [Blue-Blob-Detection](https://github.com/sfernana/Blue-Blob-Detection) containing bbd.py script to the PythonPath :
 
 [Add a path to PythonPath in Windows](https://stackoverflow.com/questions/3701646/how-to-add-to-the-pythonpath-in-windows-7)
 
 [Add a path to PythonPath in Linux](https://stackoverflow.com/questions/3402168/permanently-add-a-directory-to-pythonpath)
 
-### Code
+### Matlab Code
 
 	python_return_value = py.bbd.main(**ABSOLUTE_PATH_OF_THE_IMAGE\images\organic.tif**);
 	python_arrays = python_return_value{1};
@@ -83,4 +83,4 @@ Add the git folder **Blue-Blob-Detection** containing bbd.py script to the Pytho
 		matlab_cell{i} = double(py.array.array('d',py.numpy.nditer(temp_array)));
 	end
 	
-**Enjoy !**	
+**matlab_cell**	variable should contain a list of coordinates for each polygone of the Voroinoi diagram which can be use in the simulation model of organic cells developed at **[Centre Universitaire d'Informatique](http://cui.unige.ch/fr/)**.
