@@ -72,94 +72,13 @@ def compute_polygone_area(polygon):
 
     return math.fabs(area/2.0)
 
-def compute_polygone_from_neighborhood(image, centroid, flooding_neighborhood_points, depth, image_height, image_width):
-    """Find contours of a neighborhood which gives a "complex" polygone.
-
-    :param image: The image to compute the neighborhood on
-    :type image: cv2.imread()
-
-    :param centroids: The centers of cells
-    :type centroids: list
-
-    :param flooding_neighborhood_points: The points of the neighborhood
-    :type flooding_neighborhood_points: list
-
-    :param depth: The depth of the neighborhood
-    :type depth: int
-
-    :param image_height: The height of the image
-    :type image_height: int
-
-    :param image_width: The width of the image
-    :type image_width: int
-
-    :return: The polygone's coordinates
-    :rtype: np.Array
-
-    """
-
-    flooding_neighborhood = np.zeros((image_height, image_width), dtype=int)
-
-    for point in flooding_neighborhood_points:
-        x = point[0]
-        y = point[1]
-        flooding_neighborhood[x][y] = 1
-
-    x_center = centroid[0]
-    y_center = centroid[1]
-
-    # starts and stops of the search of contours of the neighborhood matrix
-
-    x_marge_before = x_center - depth
-    x_marge_before = x_marge_before if x_marge_before >= 0 else 0
-
-    x_marge_after = x_center + depth
-    x_marge_after = x_marge_after if x_marge_after < flooding_neighborhood.shape[1] else flooding_neighborhood.shape[1] - 1
-
-    y_marge_before = y_center - depth
-    y_marge_before = y_marge_before if y_marge_before >= 0 else 0
-
-    y_marge_after = y_center + depth
-    y_marge_after = y_marge_after if y_marge_after < flooding_neighborhood.shape[0] else flooding_neighborhood.shape[0] - 1
-
-
-    top = ['horizontal', range(x_marge_before, x_marge_after + 1), range(y_marge_before, y_center)]
-    right = ['vertical', range(y_marge_before, y_marge_after + 1), range(x_marge_after, x_center, -1) ]
-    bottom = ['horizontal', range(x_marge_after, x_marge_before - 1, -1), range(y_marge_after, y_center, -1)]
-    left = ['vertical', range(y_marge_after, y_marge_before - 1, -1), range(x_marge_before, x_center)]
-
-    sides = [top, right, bottom, left]
-    polygone = []
-
-    for side in sides:
-        scan_type = side[0]
-        horizontal_scan = side[1]
-        vertical_scan = side[2]
-        for a in horizontal_scan:
-            for b in vertical_scan:
-                if scan_type == 'horizontal':
-                    x = a
-                    y = b
-                else:
-                    x = b
-                    y = a
-                if flooding_neighborhood[y][x] == 1 :
-                    point = (y,x)
-                    if point not in polygone:
-                        polygone.append([y, x])
-                        # Draw neighborhood on the image
-                        image[y][x] = [0,0,0]
-                    break;
-
-    return polygone
-
-def convert_pixel_area_to_micrometer_area(pixel_area):
-    """Convert an area in pixel into an area in micrometer
+def get_diameter(pixel_area):
+    """Convert an area in pixel into diameter in micrometer
 
     :param pixel_area: The area in pixel
     :type pixel_area: int
 
-    :return: The area in micrometer
+    :return: The diameter in micrometer
     :rtype: float
 
     """
@@ -172,9 +91,13 @@ def convert_pixel_area_to_micrometer_area(pixel_area):
 
     scale_to_pixel = end_pixel - start_pixel
 
-    micrometer_area = math.sqrt((pixel_area * pow(scale, 2) / pow(scale_to_pixel, 2)))
+    #micrometer_area = math.sqrt((pixel_area * pow(scale, 2) / pow(scale_to_pixel, 2)))
 
-    return micrometer_area
+    pixel_in_micrometer = scale / scale_to_pixel
+    rayon = math.sqrt( (pixel_area * pow(pixel_in_micrometer, 2)/ math.pi ) )
+    diameter = 2 * rayon
+
+    return diameter
 
 def create_flooding_neighborhood(image, centroids):
     """Create a neighborhood depending on neighbor's reservation and
@@ -194,11 +117,11 @@ def create_flooding_neighborhood(image, centroids):
 
     """
 
-    image_height = image.shape[0]
     image_width = image.shape[1]
+    image_height = image.shape[0]
 
     # RGB thresholds
-    # Shifts used to find a "good" threshold
+    # Shifts used to find "good" thresholds
     shift_blue = 0
     shift_red = 0
 
@@ -210,6 +133,7 @@ def create_flooding_neighborhood(image, centroids):
 
     # Distance from the center to the farest neighbor
     neighborhood_depth = compute_optimal_neighborhood_depth(centroids)
+    #neighborhood_depth = 2
 
     # A depth value of 1 will give these distances : 3 (8 neighbors)
     # A depth value of 5 will give these distances : 3, 5, 7, 9, 11 (more neighbors)
@@ -234,11 +158,11 @@ def create_flooding_neighborhood(image, centroids):
 
         # To have zeros inside
         neighborhood[1:-1,1:-1] = 0
-        # The maximum number of neighbors
-        neighborhood_size = len(zip(*np.where(neighborhood == 1)))
+
+        neighborhood_full_points = zip(*np.where(neighborhood == 1))
 
         # Iterate over each neighbor
-        for neighbor_index in range(neighborhood_size):
+        for relative_neighbor in neighborhood_full_points:
 
             # For each centroid, look for neighbors of neighborhood
             for centroid in centroids:
@@ -250,97 +174,85 @@ def create_flooding_neighborhood(image, centroids):
 
                 # Each cell contains a neighborhood in these dictionaries instanciated once
                 if centroid not in neighborhood_of_centroids:
-                    neighborhood_of_centroids[centroid] = {'full_neighborhood_points':{}, 'flooding_neighborhood_points': [] }
+                    #neighborhood_of_centroids[centroid] = {}
+                    neighborhood_of_centroids[centroid] = []
 
-                if neighborhood_index not in neighborhood_of_centroids[centroid]['full_neighborhood_points']:
-                    neighborhood_of_centroids[centroid]['full_neighborhood_points'][neighborhood_index] = []
+                neighbor_distance_width_before = x_center - (neighborhood_index + 1)
 
-                    # Truncate neighborhood for cells in extremas
+                neighbor_distance_height_before = y_center  - (neighborhood_index + 1)
 
-                    height_start = 0
-                    height_end = neighborhood.shape[0]
+                # neighbor's coordinates in neighborhood matrix
+                relative_neighbor_x = relative_neighbor[0]
+                relative_neighbor_y = relative_neighbor[1]
 
-                    width_start = 0
-                    width_end = neighborhood.shape[1]
+                # neighbor's coordinates in image
+                absolute_neighbor_x = relative_neighbor_x + neighbor_distance_width_before
+                absolute_neighbor_y = relative_neighbor_y + neighbor_distance_height_before
 
-                    neighbor_distance_height_before = y_center  - (neighborhood_index + 1)
+                # Be carefull of cells located at extremas !
+                if (absolute_neighbor_x < (image_width - 1) and absolute_neighbor_x >=0 ) and (absolute_neighbor_y < (image_height -1) and absolute_neighbor_y >= 0):
 
-                    if neighbor_distance_height_before < 0:
-                        height_start = np.abs(neighbor_distance_height_before)
+                    absolute_neighbor = (absolute_neighbor_x, absolute_neighbor_y)
+                    #print image_width, image_height
 
-                    neighbor_distance_height_after = y_center  + (neighborhood_index + 1)
-
-                    if neighbor_distance_height_after > image_height - 1:
-                        height_end = neighborhood.shape[0] - (neighbor_distance_height_after - (image_height - 1))
-
-
-                    neighbor_distance_width_before = x_center - (neighborhood_index + 1)
-
-                    if neighbor_distance_width_before < 0:
-                        width_start = np.abs(neighbor_distance_width_before)
-
-                    neighbor_distance_width_after = x_center  + (neighborhood_index + 1)
-
-                    if neighbor_distance_width_after > image_width - 1:
-                        width_end = neighborhood.shape[1] - (neighbor_distance_width_after - (image_width - 1))
-
-                    # Truncated neighborhood
-                    neighborhood_cut = neighborhood[height_start:height_end,width_start:width_end]
-
-                    # Reshape the (truncated or not) neighborhood to the size of the image
-                    # in order to obtain absolute coordinates of neighbors
-                    height_before = neighbor_distance_height_before
-                    height_before = height_before if height_before >= 0 else 0
-
-                    height_after = image_height - y_center - (neighborhood_index + 2)
-                    height_after = height_after if height_after >= 0 else 0
-
-                    width_before = neighbor_distance_width_before
-                    width_before = width_before if width_before >= 0 else 0
-
-                    width_after = image_width - x_center - (neighborhood_index + 2)
-                    width_after = width_after if width_after >= 0 else 0
-
-                    # Reshaping: 0s padding
-                    neighborhood_resized = np.pad(neighborhood_cut,((height_before, height_after), (width_before, width_after)) ,mode='constant', constant_values=0)
-
-                    neighborhood_points = zip(*np.where(neighborhood_resized == 1))
-
-                    neighborhood_of_centroids[centroid]['full_neighborhood_points'][neighborhood_index] = neighborhood_points
-
-                neighborhood_points = neighborhood_of_centroids[centroid]['full_neighborhood_points'][neighborhood_index]
-
-                # Maximum number of neighbors may not correspond to the 'real' neighborhood due to extremas !
-                if neighbor_index < len(neighborhood_points):
-                    neighbor = neighborhood_points[neighbor_index]
-
-                    x = neighbor[0]
-                    y = neighbor[1]
-
+                    #print absolute_neighbor
                     # Get RB value of the neighbor
-                    blue = image[x , y][0]
-                    red = image[x , y][2]
+                    #print absolute_neighbor_x, image_width, image_height
+                    blue = image[absolute_neighbor_y , absolute_neighbor_x][0]
+                    red = image[absolute_neighbor_y , absolute_neighbor_x][2]
 
                     # Analyse distribution of colors
                     blues.append(blue)
                     reds.append(red)
 
                     # A neighbor is choosen if it is not reserved and if it has a sufficient RGB threshold
-                    if (blue > blue_threshold and red > red_threshold) and neighbor not in reserved_neighbors:
-                        neighborhood_of_centroids[centroid]['flooding_neighborhood_points'].append(neighbor)
-                        reserved_neighbors.append(neighbor)
+                    if (blue > blue_threshold and red > red_threshold) and relative_neighbor not in reserved_neighbors:
+                    #if absolute_neighbor not in reserved_neighbors:
 
-    # Once the neighborhood has been computed for each centroid, we try to find the contours
-    # which will be our polygone
+                        # Compute contour of the cell by deleting inside/predecessor neighborhood
+                        # and keep the greatest one, which will result in a polygone
+                        if neighborhood_index > 0:
+                            predecessor_relative_neighbor_x = -1
+                            predecessor_relative_neighbor_y = -1
+
+                            if relative_neighbor_x > 0 and relative_neighbor_x < (neighborhood_index + 1)*2 and relative_neighbor_y == 0:
+                                predecessor_relative_neighbor_x = relative_neighbor_x
+                                predecessor_relative_neighbor_y = relative_neighbor_y + 1
+                            elif relative_neighbor_y > 0 and relative_neighbor_y < (neighborhood_index + 1)*2 and relative_neighbor_x == 0:
+                                predecessor_relative_neighbor_x = relative_neighbor_x + 1
+                                predecessor_relative_neighbor_y = relative_neighbor_y
+                            elif relative_neighbor_x > 0 and relative_neighbor_x < (neighborhood_index + 1)*2 and relative_neighbor_y == (neighborhood_index + 1)*2:
+                                predecessor_relative_neighbor_x = relative_neighbor_x
+                                predecessor_relative_neighbor_y = relative_neighbor_y - 1
+                            elif relative_neighbor_y > 0 and relative_neighbor_y < (neighborhood_index + 1)*2 and relative_neighbor_x == (neighborhood_index + 1)*2:
+                                predecessor_relative_neighbor_x = relative_neighbor_x - 1
+                                predecessor_relative_neighbor_y = relative_neighbor_y
+
+                            if predecessor_relative_neighbor_x >= 0 and predecessor_relative_neighbor_y >= 0:
+                                predecessor_absolute_neighbor_x = predecessor_relative_neighbor_x + neighbor_distance_width_before
+                                predecessor_absolute_neighbor_y = predecessor_relative_neighbor_y + neighbor_distance_height_before
+
+                                predecessor_absolute_neighbor = (predecessor_absolute_neighbor_x, predecessor_absolute_neighbor_y)
+
+                                if predecessor_absolute_neighbor in neighborhood_of_centroids[centroid]:
+                                    predecessor_absolute_neighbor_index = neighborhood_of_centroids[centroid].index(predecessor_absolute_neighbor)
+                                    del neighborhood_of_centroids[centroid][predecessor_absolute_neighbor_index]
+                                    #image[predecessor_absolute_neighbor_y][predecessor_absolute_neighbor_x] = [255,255,255]
+
+                        #neighborhood_of_centroids[centroid][relative_neighbor] = absolute_neighbor
+                        neighborhood_of_centroids[centroid].append(absolute_neighbor)
+                        #image[absolute_neighbor_y][absolute_neighbor_x] = [0,0,0]
+
+                        reserved_neighbors.append(absolute_neighbor)
+
     facets = []
     for centroid in centroids:
         centroid = (centroid[0], centroid[1])
-        flooding_neighborhood_points = neighborhood_of_centroids[centroid]['flooding_neighborhood_points']
-        facet = compute_polygone_from_neighborhood(image, centroid, flooding_neighborhood_points, neighborhood_depth, image_height, image_width)
-        facet_to_rint = np.array(np.rint(facet), np.int)
-        if (facet_to_rint>=0.0).all():
-            facets.append(facet)
-
+        facet = neighborhood_of_centroids[centroid]
+        #facet_to_rint = np.array(np.rint(facet), np.int)
+        #if (facet_to_rint>=0.0).all():
+            #facets.append(facet)
+        facets.append(facet)
     return facets
 
 def create_voronoi_diagram(image, subdiv_2D, voronoi_color) :
@@ -592,8 +504,16 @@ def plot_cell_area_distribution(data_to_dist):
     fig = plt.figure()
 
     #n, bins, patches = plt.hist(data_to_dist, bins=np.linspace(0,1000,100))
-    plt.hist(data_to_dist, bins=np.linspace(0,0.000000001,100))
-    plt.xticks(np.arange(0.0000000001,0.0000000007,0.00000000005))
+
+    #areas
+    #plt.hist(data_to_dist, bins=np.linspace(0,0.000000001,100))
+    #plt.xticks(np.arange(0.0000000001,0.0000000007,0.00000000005))
+
+    #diameter
+    plt.hist(data_to_dist, bins=np.linspace(0,100,10))
+    plt.xticks(np.arange(0,100,10))
+
+    #edges
     #plt.hist(data_to_dist, bins=np.linspace(3.0,9.0,20))
     #plt.xticks(np.arange(3.0,9.0,0.5))
     #print np.sum(n)
@@ -711,6 +631,7 @@ def process(images, output_folder_temp, output_folder, detected_blob_color, voro
 
         sorted_facets = []
         cell_areas = []
+        cell_diameters = []
         cell_edges = []
 
         for facet, centroid in zip(facets, centroids):
@@ -718,6 +639,8 @@ def process(images, output_folder_temp, output_folder, detected_blob_color, voro
             sorted_facet = sorted(facet, key=lambda coordinate:math.atan2(coordinate[0] - centroid[0], coordinate[1] - centroid[1]), reverse=True)
             sorted_facets.append(sorted_facet)
             cell_area = compute_polygone_area(facet)
+            cell_diameter = get_diameter(cell_area)
+            cell_diameters.append(cell_diameter)
             if cell_area < 1000:
                 cell_areas.append(cell_area)
             if len(facet) < 2:
@@ -729,23 +652,31 @@ def process(images, output_folder_temp, output_folder, detected_blob_color, voro
 
             cell_edges.append(edges)
 
-        cell_area = np.median(cell_areas)
-        cell_std = np.std(cell_areas)
-        cell_mean = np.mean(cell_areas)
-        edges_median = np.median(cell_edges)
-        edges_mean = np.mean(cell_edges)
-        edges_std = np.std(cell_edges)
+        # areas
+        cell_area_median = np.median(cell_areas)
+        cell_area_std = np.std(cell_areas)
+        cell_area_mean = np.mean(cell_areas)
+
+        # diameters
+        cell_diameter_median = np.median(cell_diameters)
+        cell_diameter_std = np.std(cell_diameters)
+        cell_diameter_mean = np.mean(cell_diameters)
+
+        # edges
+        cell_edges_median = np.median(cell_edges)
+        cell_edges_mean = np.mean(cell_edges)
+        cell_edges_std = np.std(cell_edges)
 
         print("Image '%s' facets coordinates counter clockwise sorting successfull" % image_filename)
-        print("Mean of cell area is of '%s' micrometer" % convert_pixel_area_to_micrometer_area(cell_mean))
-        print("Median of cell area is of '%s' micrometer" % convert_pixel_area_to_micrometer_area(cell_area))
-        print("Standard deviation of cell area is of '%s' micrometer" % convert_pixel_area_to_micrometer_area(cell_std))
-        print("Mean of cell edges is of '%s'" % edges_mean)
-        print("Median of cell edges is of '%s'" % edges_median)
-        print("Standard deviation of cell edges is of '%s'" % edges_std)
+        print("Mean of cell diameter is of '%s' micrometer" % cell_diameter_mean)
+        print("Median of cell diameter is of '%s' micrometer" % cell_diameter_median)
+        print("Standard deviation of cell diameter is of '%s' micrometer" % cell_diameter_std)
+        print("Mean of cell edges is of '%s'" % cell_edges_mean)
+        print("Median of cell edges is of '%s'" % cell_edges_median)
+        print("Standard deviation of cell edges is of '%s'" % cell_edges_std)
         print("Image '%s' facets coordinates saving to file processing..." % image_filename)
 
-        plot_cell_area_distribution(cell_areas)
+        plot_cell_area_distribution(cell_diameters)
 
         sorted_facets_to_text = []
         for index, facet in enumerate(sorted_facets):
@@ -759,7 +690,7 @@ def process(images, output_folder_temp, output_folder, detected_blob_color, voro
         with open(facets_file_text, 'w') as text_file:
             text_file.write("\n".join(sorted_facets_to_text))
 
-        print("Image '%s' facets coordinates saving to file successfull" % image)
+        print("Image '%s' facets coordinates saving to file successfull" % image_filename)
 
         total_facets.append(sorted_facets)
 
