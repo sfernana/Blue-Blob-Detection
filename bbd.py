@@ -22,6 +22,7 @@ import argparse
 import math
 import csv
 import time
+from itertools import combinations
 
 # "Computer Vision" libraries
 import numpy as np
@@ -148,6 +149,7 @@ def create_flooding_neighborhood(image, centroids):
     # List of pixels reserved by cells during the flooding
     reserved_neighbors = []
     neighborhood_of_centroids = {}
+    points_belongs_to = {}
 
     # Blue and red values of neighbors
     blues = []
@@ -155,7 +157,6 @@ def create_flooding_neighborhood(image, centroids):
 
     # Iterate over each neighborhood
     for neighborhood_index, neighborhood in enumerate(neighborhoods):
-
         # To have zeros inside
         neighborhood[1:-1,1:-1] = 0
 
@@ -174,8 +175,7 @@ def create_flooding_neighborhood(image, centroids):
 
                 # Each cell contains a neighborhood in these dictionaries instanciated once
                 if centroid not in neighborhood_of_centroids:
-                    #neighborhood_of_centroids[centroid] = {}
-                    neighborhood_of_centroids[centroid] = []
+                    neighborhood_of_centroids[centroid] = {'mine':[], 'commons':{}}
 
                 neighbor_distance_width_before = x_center - (neighborhood_index + 1)
 
@@ -202,58 +202,224 @@ def create_flooding_neighborhood(image, centroids):
                     red = image[absolute_neighbor_y , absolute_neighbor_x][2]
 
                     # Analyse distribution of colors
-                    blues.append(blue)
-                    reds.append(red)
+                    #blues.append(blue)
+                    #reds.append(red)
 
                     # A neighbor is choosen if it is not reserved and if it has a sufficient RGB threshold
-                    if (blue > blue_threshold and red > red_threshold) and relative_neighbor not in reserved_neighbors:
-                    #if absolute_neighbor not in reserved_neighbors:
+                    if (blue > blue_threshold and red > red_threshold):
 
-                        # Compute contour of the cell by deleting inside/predecessor neighborhood
-                        # and keep the greatest one, which will result in a polygone
-                        if neighborhood_index > 0:
-                            predecessor_relative_neighbor_x = -1
-                            predecessor_relative_neighbor_y = -1
+                        if absolute_neighbor in reserved_neighbors:
+                            # Each centroid know which points it has in common
+                            # And each point know which cell it belongs to (see later: points_belongs_to)
+                            centroid_owner = points_belongs_to[absolute_neighbor]
 
-                            if relative_neighbor_x > 0 and relative_neighbor_x < (neighborhood_index + 1)*2 and relative_neighbor_y == 0:
-                                predecessor_relative_neighbor_x = relative_neighbor_x
-                                predecessor_relative_neighbor_y = relative_neighbor_y + 1
-                            elif relative_neighbor_y > 0 and relative_neighbor_y < (neighborhood_index + 1)*2 and relative_neighbor_x == 0:
-                                predecessor_relative_neighbor_x = relative_neighbor_x + 1
-                                predecessor_relative_neighbor_y = relative_neighbor_y
-                            elif relative_neighbor_x > 0 and relative_neighbor_x < (neighborhood_index + 1)*2 and relative_neighbor_y == (neighborhood_index + 1)*2:
-                                predecessor_relative_neighbor_x = relative_neighbor_x
-                                predecessor_relative_neighbor_y = relative_neighbor_y - 1
-                            elif relative_neighbor_y > 0 and relative_neighbor_y < (neighborhood_index + 1)*2 and relative_neighbor_x == (neighborhood_index + 1)*2:
-                                predecessor_relative_neighbor_x = relative_neighbor_x - 1
-                                predecessor_relative_neighbor_y = relative_neighbor_y
+                            if centroid_owner not in neighborhood_of_centroids[centroid]['commons']:
+                                neighborhood_of_centroids[centroid]['commons'][centroid_owner] = []
 
-                            if predecessor_relative_neighbor_x >= 0 and predecessor_relative_neighbor_y >= 0:
-                                predecessor_absolute_neighbor_x = predecessor_relative_neighbor_x + neighbor_distance_width_before
-                                predecessor_absolute_neighbor_y = predecessor_relative_neighbor_y + neighbor_distance_height_before
+                            neighborhood_of_centroids[centroid]['commons'][centroid_owner].append(absolute_neighbor)
 
-                                predecessor_absolute_neighbor = (predecessor_absolute_neighbor_x, predecessor_absolute_neighbor_y)
+                        else:
 
-                                if predecessor_absolute_neighbor in neighborhood_of_centroids[centroid]:
-                                    predecessor_absolute_neighbor_index = neighborhood_of_centroids[centroid].index(predecessor_absolute_neighbor)
-                                    del neighborhood_of_centroids[centroid][predecessor_absolute_neighbor_index]
-                                    #image[predecessor_absolute_neighbor_y][predecessor_absolute_neighbor_x] = [255,255,255]
+                            # Compute contour of the cell by deleting inside/predecessor neighborhood
+                            # and keep the greatest one, which will result in a polygone
+                            # The first neighborhood does not have predecessor (there is only centroid in its center)
+                            if neighborhood_index > 0:
+                                predecessor_relative_neighbor_x = -1
+                                predecessor_relative_neighbor_y = -1
 
-                        #neighborhood_of_centroids[centroid][relative_neighbor] = absolute_neighbor
-                        neighborhood_of_centroids[centroid].append(absolute_neighbor)
-                        #image[absolute_neighbor_y][absolute_neighbor_x] = [0,0,0]
+                                # We take predecessor of certain neighbors
+                                # e.g
+                                # We have this (depth = 2):
+                                # *****
+                                # *****
+                                # **0**
+                                # *****
+                                # *****
+                                # Here we look only predecessors of -:
+                                # *---*
+                                # -***-
+                                # -*0*-
+                                # -***-
+                                # *---*
+                                # We delete them and the result is:
+                                # *****
+                                # *   *
+                                # * 0 *
+                                # *   *
+                                # *****
 
-                        reserved_neighbors.append(absolute_neighbor)
+                                if relative_neighbor_x > 0 and relative_neighbor_x < (neighborhood_index + 1)*2 and relative_neighbor_y == 0:
+                                    predecessor_relative_neighbor_x = relative_neighbor_x
+                                    predecessor_relative_neighbor_y = relative_neighbor_y + 1
+                                elif relative_neighbor_y > 0 and relative_neighbor_y < (neighborhood_index + 1)*2 and relative_neighbor_x == 0:
+                                    predecessor_relative_neighbor_x = relative_neighbor_x + 1
+                                    predecessor_relative_neighbor_y = relative_neighbor_y
+                                elif relative_neighbor_x > 0 and relative_neighbor_x < (neighborhood_index + 1)*2 and relative_neighbor_y == (neighborhood_index + 1)*2:
+                                    predecessor_relative_neighbor_x = relative_neighbor_x
+                                    predecessor_relative_neighbor_y = relative_neighbor_y - 1
+                                elif relative_neighbor_y > 0 and relative_neighbor_y < (neighborhood_index + 1)*2 and relative_neighbor_x == (neighborhood_index + 1)*2:
+                                    predecessor_relative_neighbor_x = relative_neighbor_x - 1
+                                    predecessor_relative_neighbor_y = relative_neighbor_y
+
+                                if predecessor_relative_neighbor_x >= 0 and predecessor_relative_neighbor_y >= 0:
+                                    predecessor_absolute_neighbor_x = predecessor_relative_neighbor_x + neighbor_distance_width_before
+                                    predecessor_absolute_neighbor_y = predecessor_relative_neighbor_y + neighbor_distance_height_before
+
+                                    predecessor_absolute_neighbor = (predecessor_absolute_neighbor_x, predecessor_absolute_neighbor_y)
+
+                                    if predecessor_absolute_neighbor in neighborhood_of_centroids[centroid]['mine']:
+                                        predecessor_absolute_neighbor_index = neighborhood_of_centroids[centroid]['mine'].index(predecessor_absolute_neighbor)
+                                        del neighborhood_of_centroids[centroid]['mine'][predecessor_absolute_neighbor_index]
+                                        #image[predecessor_absolute_neighbor_y][predecessor_absolute_neighbor_x] = [255,255,255]
+
+                            #neighborhood_of_centroids[centroid][relative_neighbor] = absolute_neighbor
+                            neighborhood_of_centroids[centroid]['mine'].append(absolute_neighbor)
+
+                            #image[absolute_neighbor_y][absolute_neighbor_x] = [0,0,0]
+
+                            reserved_neighbors.append(absolute_neighbor)
+
+                            # For each point, we know which cell it belongs to
+                            points_belongs_to[absolute_neighbor] = centroid
+
+
+    #neighborhood_of_centroids = {(2,4):{'mine':[(2,5),(3,6),(4,7),(100,100)], 'commons':{(12,14):[(13,15), (12,16),(30,100)]}},(12,14):{'mine':[(13,15),(12,16),(13,12),(30,100)], 'commons':{(2,4):[(3,6),(4,7),(100,100)]}} }
+    neighborhood_of_centroids = put_facets_in_common(neighborhood_of_centroids)
+    # result =
+    #{(2, 4): {'mine': [[2, 5], [3, 6], [100, 100]], 'commons': {(12, 14): [[13, 15], [12, 16], [30, 100]]}}, (12, 14): {'mine': [[13, 12], [3, 6], [100, 100]], 'commons': {}}}
 
     facets = []
-    for centroid in centroids:
-        centroid = (centroid[0], centroid[1])
-        facet = neighborhood_of_centroids[centroid]
+    for centroid in neighborhood_of_centroids:
+        facet = neighborhood_of_centroids[centroid]['mine']
         #facet_to_rint = np.array(np.rint(facet), np.int)
         #if (facet_to_rint>=0.0).all():
             #facets.append(facet)
         facets.append(facet)
     return facets
+
+def square_distance(x,y):
+    """Compute the square distance between points.
+
+    :param x: The x coordinates
+    :type x: int
+
+    :param y: The y coordinates
+    :type y: int
+
+    :return: The square distance
+    :rtype: int
+
+    """
+
+    return sum([(xi-yi)**2 for xi, yi in zip(x,y)])
+
+def get_farthest_points(edges):
+    """Given some edges by a list of points,
+    The function finds the farthest points and return one edge (2 points).
+    Like that, it minimizes the number of edges of contours.
+
+    :param edges: The point of the edges
+    :type edges: list
+
+    :return: The farthest points
+    :rtype: list
+
+    """
+
+    # Find farthest(2) points in a list of at least 3 points
+    if len(edges) < 3:
+        return edges
+
+    A = np.array(edges)
+    max_square_distance = 0
+
+    for pair in combinations(A,2):
+        distance = square_distance(*pair)
+        if distance > max_square_distance:
+            max_square_distance = distance
+            max_pair = [tuple(pair[0]), tuple(pair[1])]
+
+    return max_pair
+
+def put_facets_in_common(neighborhood_of_centroids):
+    """The flooding finds contours but they have
+    no edges in common.
+
+    This function use 'history' parameter 'commons' and
+    put in common contours by deleting points of the second
+    visited contour and add to it common points of the first visited contour.
+
+    e.g
+    Suppose we have 2 centroids with their contour delimited by 'mine' points
+    and the points they have in common defined in 'commons':
+    C1:mine:ABCDE        C2:mine:FGHIJ
+      :commons:GHI         :commons:BCD
+
+    At the end we would like to have:
+    C1:mine:ABCDE        C2:mine:FBCDJ
+      :commons:GHI         :commons:BCD
+
+    And if we want to keep only one edge in common between the 2 centroids,
+    we would like to have:
+
+    C1:mine:AB*DE        C2:mine:FB*DJ
+      :commons:G*I         :commons:B*D
+
+    We remove intermediate points (make diagram to understand)
+
+    :param neighborhood_of_centroids: The centroids and their neighborhood
+    :type neighborhood_of_centroids: dict
+
+    :return: The centroids and their neighborhood put in common
+    :rtype: dict
+
+
+    """
+
+    for centroid in neighborhood_of_centroids:
+
+        # We get centroid's info like points it has in common
+        centroid_info = neighborhood_of_centroids[centroid]
+        # Points in common
+        centroid_commons = centroid_info['commons']
+        # Own points
+        centroid_mine = centroid_info['mine']
+
+        # Look points in common
+        for centroid_owner in centroid_commons:
+            # Get the owner of the point
+
+            for centroid_common in centroid_commons[centroid_owner]:
+
+                # We delete this common point in the owner's mine list
+                if centroid_common in neighborhood_of_centroids[centroid_owner]['mine']:
+                    common_index = neighborhood_of_centroids[centroid_owner]['mine'].index(centroid_common)
+                    del neighborhood_of_centroids[centroid_owner]['mine'][common_index]
+
+            # Delete intermediate points to keep only one edge before adding them to 2nd visited contour
+            if centroid in neighborhood_of_centroids[centroid_owner]['commons']:
+                centroid_owner_commons = neighborhood_of_centroids[centroid_owner]['commons'][centroid]
+                centroid_owner_commons_minimized = get_farthest_points(centroid_owner_commons)
+                neighborhood_of_centroids[centroid_owner]['mine'] += centroid_owner_commons_minimized
+
+                # Intermediate points deleted have to be removed also from 1st visited contour (update)
+                centroid_mines_to_delete = list(set(map(tuple, centroid_owner_commons)).symmetric_difference(set(map(tuple, centroid_owner_commons_minimized))))
+
+                for centroid_mine_to_delete in centroid_mines_to_delete:
+                    if centroid_mine_to_delete in neighborhood_of_centroids[centroid]['mine']:
+                        mine_index = neighborhood_of_centroids[centroid]['mine'].index(centroid_mine_to_delete)
+                        del neighborhood_of_centroids[centroid]['mine'][mine_index]
+
+                # Because 2nd visited contour will be visited, do not check it commons and make 2 times the same job
+                # of 'commonization'
+                del neighborhood_of_centroids[centroid_owner]['commons'][centroid]
+
+
+            # Like that we have 2 centroids now with common points
+            # We choose the ones of the centroid we start
+
+    return neighborhood_of_centroids
+
 
 def create_voronoi_diagram(image, subdiv_2D, voronoi_color) :
     """Create and print a Voronoi diagram on
@@ -513,13 +679,21 @@ def plot_cell_area_distribution(data_to_dist):
     plt.hist(data_to_dist, bins=np.linspace(0,100,10))
     plt.xticks(np.arange(0,100,10))
 
+    fig.savefig('CellDiameterDistribution.png')
+
+    plt.clf()
+
+    #edges
+    plt.hist(data_to_dist, bins=np.linspace(3.0,30.0,20))
+    plt.xticks(np.arange(3.0,30.0,2))
+
     #edges
     #plt.hist(data_to_dist, bins=np.linspace(3.0,9.0,20))
     #plt.xticks(np.arange(3.0,9.0,0.5))
     #print np.sum(n)
-    plt.show()
+    #plt.show()
 
-    fig.savefig('CellAreaDistribution.png')
+    fig.savefig('CellEdgeDistribution.png')
 
 def main(images=[], output_folder="", detected_blob_color=None, voronoi_color=None):
     """Main function defined for the Matlab call of python script
